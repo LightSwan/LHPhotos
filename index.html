@@ -1,0 +1,1683 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marca de Agua por Lotes</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{
+  --paper:#e8e4da;
+  --paper-dark:#dbd5c6;
+  --ink:#232019;
+  --ink-soft:#5b5548;
+  --line:#c7c0ae;
+  --safelight:#b5471b;
+  --safelight-dim:#8a3714;
+  --tray:#f4f1e9;
+  --focus:#1f6f5c;
+  --mono: 'ui-monospace', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--serif);
+  min-height:100vh;
+  background-image:
+    radial-gradient(circle at 20% 10%, rgba(0,0,0,0.03), transparent 40%),
+    radial-gradient(circle at 90% 80%, rgba(0,0,0,0.035), transparent 45%);
+}
+
+a{color:inherit;}
+
+/* ---------- Encabezado tipo etiqueta de carrete ---------- */
+header{
+  border-bottom:2px solid var(--ink);
+  padding:28px 32px 20px;
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  flex-wrap:wrap;
+  gap:16px;
+}
+.brand{
+  display:flex;
+  align-items:baseline;
+  gap:14px;
+}
+.brand .mark{
+  font-family:var(--mono);
+  font-size:11px;
+  letter-spacing:0.14em;
+  color:var(--safelight);
+  border:1px solid var(--safelight);
+  padding:3px 7px;
+  border-radius:2px;
+}
+h1{
+  font-size:26px;
+  font-weight:400;
+  margin:0;
+  letter-spacing:0.01em;
+}
+h1 em{font-style:italic; color:var(--safelight-dim);}
+.subhead{
+  font-family:var(--mono);
+  font-size:12px;
+  color:var(--ink-soft);
+  max-width:360px;
+  text-align:right;
+  line-height:1.5;
+}
+
+@media (max-width: 640px){
+  header{padding:16px 16px 14px; align-items:flex-start;}
+  h1{font-size:19px;}
+  .brand .mark{font-size:9px; padding:2px 5px;}
+  .subhead{display:none;} /* la explicación larga no aporta en pantalla pequeña, prioriza espacio útil */
+}
+
+/* ---------- Layout principal ---------- */
+main{
+  display:grid;
+  grid-template-columns:340px 1fr;
+  gap:0;
+  min-height:calc(100vh - 96px);
+}
+@media (max-width: 900px){
+  main{
+    grid-template-columns:1fr;
+    display:flex;
+    flex-direction:column;
+  }
+  /* En móvil, el visor grande (workbench) va primero; el panel de ajustes queda debajo */
+  .workbench{ order:1; }
+  .control-room{ order:2; }
+}
+
+/* ---------- Panel lateral (cuarto de control) ---------- */
+.control-room{
+  border-right:2px solid var(--ink);
+  background:var(--tray);
+  padding:0;
+  overflow-y:auto;
+  max-height:calc(100vh - 96px);
+}
+@media (max-width: 900px){
+  .control-room{max-height:none; border-right:none; border-top:2px solid var(--ink);}
+}
+
+.panel{
+  border-bottom:1px solid var(--line);
+  padding:20px 22px;
+}
+.panel:last-child{border-bottom:none;}
+
+.panel-title{
+  font-family:var(--mono);
+  font-size:11px;
+  letter-spacing:0.1em;
+  color:var(--safelight-dim);
+  margin:0 0 14px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.panel-title .num{
+  font-size:10px;
+  border:1px solid var(--safelight-dim);
+  width:16px;height:16px;
+  border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--safelight-dim);
+}
+
+.field{margin-bottom:14px;}
+.field:last-child{margin-bottom:0;}
+.field label{
+  display:flex;
+  justify-content:space-between;
+  font-size:13px;
+  color:var(--ink);
+  margin-bottom:6px;
+}
+.field label .val{
+  font-family:var(--mono);
+  font-size:11px;
+  color:var(--ink-soft);
+}
+
+input[type="text"], select, textarea{
+  width:100%;
+  font-family:var(--serif);
+  font-size:14px;
+  padding:8px 9px;
+  border:1px solid var(--line);
+  background:#fff;
+  color:var(--ink);
+  border-radius:2px;
+}
+textarea{resize:vertical; min-height:52px; font-family:var(--mono); font-size:12px;}
+input[type="text"]:focus, select:focus, textarea:focus, input[type="range"]:focus{
+  outline:2px solid var(--focus);
+  outline-offset:1px;
+}
+
+input[type="range"]{
+  width:100%;
+  accent-color:var(--safelight);
+  height:18px;
+}
+
+input[type="color"]{
+  -webkit-appearance:none;
+  width:40px;height:30px;
+  border:1px solid var(--line);
+  border-radius:2px;
+  padding:0;
+  background:none;
+  cursor:pointer;
+}
+input[type="color"]::-webkit-color-swatch-wrapper{padding:2px;}
+input[type="color"]::-webkit-color-swatch{border:none; border-radius:1px;}
+
+.color-row{display:flex; align-items:center; gap:10px;}
+.color-row .hex{font-family:var(--mono); font-size:12px; color:var(--ink-soft);}
+
+.row-2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+
+.chip-group{display:flex; flex-wrap:wrap; gap:6px;}
+.chip{
+  font-family:var(--mono);
+  font-size:11px;
+  padding:6px 10px;
+  border:1px solid var(--line);
+  border-radius:20px;
+  cursor:pointer;
+  background:#fff;
+  color:var(--ink-soft);
+  transition:background 0.12s, color 0.12s, border-color 0.12s;
+}
+.chip:hover{border-color:var(--ink-soft);}
+.chip.active{
+  background:var(--ink);
+  border-color:var(--ink);
+  color:var(--tray);
+}
+
+.pos-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:6px;
+  width:120px;
+}
+.pos-cell{
+  aspect-ratio:1;
+  border:1px solid var(--line);
+  background:#fff;
+  cursor:pointer;
+  position:relative;
+  border-radius:2px;
+}
+.pos-cell::after{
+  content:'';
+  position:absolute;
+  width:6px;height:6px;
+  border-radius:50%;
+  background:var(--line);
+  top:50%;left:50%;
+  transform:translate(-50%,-50%);
+}
+.pos-cell.active{border-color:var(--safelight); background:rgba(181,71,27,0.08);}
+.pos-cell.active::after{background:var(--safelight);}
+
+.check-list{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.check-item{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  font-size:13px;
+  cursor:pointer;
+  user-select:none;
+}
+.check-item input[type="checkbox"]{
+  width:16px; height:16px;
+  accent-color:var(--safelight);
+  cursor:pointer;
+  flex-shrink:0;
+}
+
+.toggle-line{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  font-size:13px;
+  cursor:pointer;
+  user-select:none;
+}
+.switch{
+  width:34px; height:19px;
+  background:var(--line);
+  border-radius:20px;
+  position:relative;
+  transition:background 0.15s;
+  flex-shrink:0;
+}
+.switch::after{
+  content:'';
+  position:absolute;
+  width:15px;height:15px;
+  background:#fff;
+  border-radius:50%;
+  top:2px; left:2px;
+  transition:left 0.15s;
+  box-shadow:0 1px 2px rgba(0,0,0,0.3);
+}
+.switch.on{background:var(--focus);}
+.switch.on::after{left:17px;}
+
+.hint{
+  font-size:11px;
+  color:var(--ink-soft);
+  margin-top:6px;
+  line-height:1.4;
+}
+
+/* ---------- Zona de trabajo / previsualización ---------- */
+.workbench{
+  padding:26px 30px;
+  overflow-y:auto;
+  max-height:calc(100vh - 96px);
+}
+
+.dropzone{
+  border:2px dashed var(--ink-soft);
+  border-radius:4px;
+  padding:38px 20px;
+  text-align:center;
+  cursor:pointer;
+  transition:border-color 0.15s, background 0.15s;
+  background:rgba(255,255,255,0.35);
+}
+.dropzone.drag{
+  border-color:var(--safelight);
+  background:rgba(181,71,27,0.06);
+}
+.dropzone h2{
+  font-weight:400;
+  font-size:18px;
+  margin:0 0 6px;
+}
+.dropzone p{
+  font-family:var(--mono);
+  font-size:12px;
+  color:var(--ink-soft);
+  margin:0;
+}
+.dropzone input{display:none;}
+
+.toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:10px;
+  margin:22px 0 16px;
+}
+.count-tag{
+  font-family:var(--mono);
+  font-size:12px;
+  color:var(--ink-soft);
+}
+.count-tag strong{color:var(--ink); font-size:15px;}
+
+.btn{
+  font-family:var(--mono);
+  font-size:12px;
+  letter-spacing:0.03em;
+  padding:10px 18px;
+  border:1px solid var(--ink);
+  background:var(--ink);
+  color:var(--tray);
+  border-radius:2px;
+  cursor:pointer;
+  transition:opacity 0.15s;
+}
+.btn:hover{opacity:0.85;}
+.btn:disabled{opacity:0.35; cursor:not-allowed;}
+.btn.ghost{
+  background:transparent;
+  color:var(--ink);
+}
+.btn.accent{
+  background:var(--safelight);
+  border-color:var(--safelight);
+}
+
+/* ---------- Visor grande (loupe) ---------- */
+.loupe{
+  margin-bottom:26px;
+}
+.loupe-head{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  margin-bottom:10px;
+}
+.loupe-head .panel-title{margin:0;}
+.loupe-head .loupe-fname{
+  font-family:var(--mono);
+  font-size:11px;
+  color:var(--ink-soft);
+  max-width:60%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.loupe-stage{
+  background:#111;
+  border:1px solid var(--ink);
+  border-radius:3px;
+  position:relative;
+  min-height:340px;
+  max-height:62vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background-image:repeating-conic-gradient(#2a2a2a 0% 25%, #1c1c1c 0% 50%) 50% / 18px 18px;
+  overflow:hidden;
+}
+.loupe-stage canvas{
+  max-width:100%;
+  max-height:62vh;
+  display:block;
+  object-fit:contain;
+}
+.loupe-empty{
+  font-family:var(--mono);
+  font-size:12px;
+  color:#8a8578;
+  text-align:center;
+  padding:40px;
+}
+.loupe-badge{
+  position:absolute;
+  bottom:10px; left:10px;
+  font-family:var(--mono);
+  font-size:10px;
+  color:#f3d9c9;
+  background:rgba(0,0,0,0.5);
+  padding:3px 8px;
+  border-radius:10px;
+}
+.loupe-nav{
+  position:absolute;
+  top:50%;
+  transform:translateY(-50%);
+  width:36px; height:36px;
+  border-radius:50%;
+  background:rgba(0,0,0,0.45);
+  color:#fff;
+  border:none;
+  font-size:16px;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.loupe-nav:hover{background:rgba(181,71,27,0.75);}
+.loupe-nav.prev{left:10px;}
+.loupe-nav.next{right:10px;}
+.loupe-nav:disabled{opacity:0.25; cursor:not-allowed;}
+
+.filmstrip{
+  display:flex;
+  gap:8px;
+  margin-top:10px;
+  overflow-x:auto;
+  padding-bottom:4px;
+}
+.filmstrip::-webkit-scrollbar{height:6px;}
+.filmstrip::-webkit-scrollbar-thumb{background:var(--line); border-radius:3px;}
+.thumb{
+  flex:0 0 auto;
+  width:64px; height:64px;
+  border:2px solid transparent;
+  border-radius:2px;
+  overflow:hidden;
+  cursor:pointer;
+  position:relative;
+  background:#111;
+}
+.thumb.active{border-color:var(--safelight);}
+.thumb canvas{
+  width:100%; height:100%;
+  object-fit:cover;
+  display:block;
+}
+.thumb .thumb-remove{
+  position:absolute;
+  top:1px; right:1px;
+  width:16px; height:16px;
+  border-radius:50%;
+  background:rgba(0,0,0,0.6);
+  color:#fff;
+  border:none;
+  font-size:11px;
+  line-height:1;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.thumb .thumb-remove:hover{background:rgba(181,71,27,0.85);}
+
+@media (max-width: 640px){
+  .workbench{padding:14px 14px 10px;}
+  .dropzone{padding:24px 14px;}
+  .dropzone h2{font-size:15px;}
+  .dropzone p{font-size:11px;}
+
+  .toolbar{margin:16px 0 12px; flex-direction:column; align-items:stretch;}
+  .toolbar > div{display:flex; gap:8px;}
+  .btn{flex:1; padding:13px 14px; font-size:12px;} /* objetivo táctil cómodo */
+
+  .loupe{margin-bottom:16px;}
+  .loupe-stage{min-height:220px; max-height:48vh;}
+  .loupe-stage canvas{max-height:48vh;}
+  .loupe-nav{width:40px; height:40px; font-size:18px;} /* más fácil de tocar */
+  .loupe-head .loupe-fname{font-size:10px;}
+
+  .thumb{width:56px; height:56px;}
+  .thumb .thumb-remove{width:20px; height:20px; font-size:13px;} /* dedo > cursor */
+
+  .panel{padding:16px;}
+  .panel-title{font-size:10px;}
+
+  /* Sliders más altos: más fáciles de agarrar y arrastrar con el dedo */
+  input[type="range"]{height:26px;}
+
+  /* Chips y celdas de posición con más aire para el dedo */
+  .chip{padding:8px 12px; font-size:12px;}
+  .pos-cell{min-height:34px;}
+
+  select, input[type="text"], textarea{
+    font-size:16px; /* evita el zoom automático de iOS al enfocar un input */
+    padding:11px 10px;
+  }
+}
+
+footer{
+  padding:16px 32px 30px;
+  font-family:var(--mono);
+  font-size:11px;
+  color:var(--ink-soft);
+  border-top:1px solid var(--line);
+  text-align:center;
+}
+@media (max-width: 640px){
+  footer{padding:12px 16px 20px; font-size:10px;}
+}
+
+.progress-line{
+  height:2px;
+  background:var(--line);
+  margin-top:14px;
+  position:relative;
+  overflow:hidden;
+  border-radius:2px;
+}
+.progress-line .fill{
+  position:absolute;
+  left:0; top:0; bottom:0;
+  width:0%;
+  background:var(--safelight);
+  transition:width 0.2s;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="mark">REV. 01</span>
+    <h1>Marca de agua <em>por lotes</em></h1>
+  </div>
+  <div class="subhead">Sella fecha, hora y datos EXIF sobre tus fotografías directamente en el navegador. Nada se sube a ningún servidor.</div>
+</header>
+
+<main>
+  <!-- ================= PANEL DE CONTROL ================= -->
+  <div class="control-room">
+
+    <div class="panel">
+      <p class="panel-title"><span class="num">1</span>CONTENIDO DEL SELLO</p>
+
+      <div class="field">
+        <label>Datos a incluir</label>
+        <div class="check-list">
+          <label class="check-item">
+            <input type="checkbox" id="fldFecha" checked>
+            <span>Fecha</span>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" id="fldHora" checked>
+            <span>Hora</span>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" id="fldCamara" checked>
+            <span>Cámara / modelo</span>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" id="fldIso" checked>
+            <span>ISO</span>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" id="fldApertura" checked>
+            <span>Apertura (f/)</span>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" id="fldVelocidad" checked>
+            <span>Velocidad de obturación</span>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" id="fldFocal" checked>
+            <span>Distancia focal</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Disposición de los datos</label>
+        <div class="chip-group" id="layoutGroup">
+          <span class="chip" data-layout="horizontal">horizontal</span>
+          <span class="chip active" data-layout="vertical">vertical</span>
+        </div>
+        <p class="hint">Horizontal: todo en una línea separado por puntos. Vertical: cada dato en su propia línea.</p>
+      </div>
+
+      <div class="field">
+        <label class="toggle-line" id="toggleCustomTpl">
+          <span>Usar plantilla de texto personalizada</span>
+          <span class="switch"></span>
+        </label>
+      </div>
+
+      <div class="field" id="customTplField" style="display:none;">
+        <label>Texto personalizado</label>
+        <textarea id="customTpl" placeholder="{fecha} · {hora} · {camara} · {texto}"></textarea>
+        <p class="hint">Variables disponibles: {fecha} {hora} {fechahora} {camara} {modelo} {iso} {apertura} {velocidad} {focal} {texto} {contador}</p>
+      </div>
+
+      <div class="field">
+        <label>Texto adicional (opcional)</label>
+        <input type="text" id="extraText" placeholder="p. ej. © Estudio Wili">
+      </div>
+
+      <div class="field">
+        <label>Formato de fecha</label>
+        <select id="dateFormat">
+          <option value="dd/mm/yyyy" selected>31/12/2026</option>
+          <option value="yyyy-mm-dd">2026-12-31</option>
+          <option value="dd MMM yyyy">31 dic 2026</option>
+          <option value="mm/dd/yyyy">12/31/2026</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label class="toggle-line" id="toggleNoExif">
+          <span>Si no hay EXIF, usar fecha del archivo</span>
+          <span class="switch on"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <p class="panel-title"><span class="num">2</span>TIPOGRAFÍA</p>
+
+      <div class="field">
+        <label>Familia</label>
+        <select id="fontFamily">
+          <option value="'Courier New', monospace" selected>Courier (cámara clásica)</option>
+          <option value="Arial, sans-serif">Arial</option>
+          <option value="Georgia, serif">Georgia</option>
+          <option value="'Times New Roman', serif">Times New Roman</option>
+          <option value="'Digital-7', 'Courier New', monospace">Estilo LCD digital</option>
+          <option value="Impact, sans-serif">Impact</option>
+        </select>
+      </div>
+
+      <div class="row-2">
+        <div class="field">
+          <label>Tamaño <span class="val" id="fontSizeVal">59px</span></label>
+          <input type="range" id="fontSize" min="10" max="120" value="59">
+        </div>
+        <div class="field">
+          <label>Grosor</label>
+          <select id="fontWeight">
+            <option value="400">Normal</option>
+            <option value="700" selected>Negrita</option>
+            <option value="900">Extra negrita</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Color del texto</label>
+        <div class="color-row">
+          <input type="color" id="fontColor" value="#ffffff">
+          <span class="hex" id="fontColorHex">#FFFFFF</span>
+          <div class="chip-group" style="margin-left:auto;">
+            <span class="chip" data-color="#ff8a00">ámbar</span>
+            <span class="chip" data-color="#ffffff">blanco</span>
+            <span class="chip" data-color="#39ff14">LCD</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Opacidad del texto <span class="val" id="textOpacityVal">81%</span></label>
+        <input type="range" id="textOpacity" min="0" max="100" value="81">
+      </div>
+    </div>
+
+    <div class="panel">
+      <p class="panel-title"><span class="num">3</span>PLACA / FONDO</p>
+
+      <div class="field">
+        <label class="toggle-line" id="toggleBg">
+          <span>Mostrar placa de fondo</span>
+          <span class="switch on"></span>
+        </label>
+      </div>
+
+      <div id="bgFields">
+        <div class="field">
+          <label>Color de fondo</label>
+          <div class="color-row">
+            <input type="color" id="bgColor" value="#000000">
+            <span class="hex" id="bgColorHex">#000000</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Opacidad del fondo <span class="val" id="bgOpacityVal">32%</span></label>
+          <input type="range" id="bgOpacity" min="0" max="100" value="32">
+        </div>
+        <div class="field">
+          <label>Radio de esquina <span class="val" id="bgRadiusVal">17px</span></label>
+          <input type="range" id="bgRadius" min="0" max="30" value="17">
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="toggle-line" id="toggleShadow">
+          <span>Sombra proyectada en el texto</span>
+          <span class="switch"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="panel">
+      <p class="panel-title"><span class="num">4</span>POSICIÓN Y MARGEN</p>
+
+      <div class="field">
+        <label>Anclaje del sello</label>
+        <div class="pos-grid" id="posGrid">
+          <div class="pos-cell" data-pos="tl"></div>
+          <div class="pos-cell" data-pos="tc"></div>
+          <div class="pos-cell" data-pos="tr"></div>
+          <div class="pos-cell active" data-pos="cl"></div>
+          <div class="pos-cell" data-pos="cc"></div>
+          <div class="pos-cell" data-pos="cr"></div>
+          <div class="pos-cell" data-pos="bl"></div>
+          <div class="pos-cell" data-pos="bc"></div>
+          <div class="pos-cell" data-pos="br"></div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Margen <span class="val" id="marginVal">24px</span></label>
+        <input type="range" id="margin" min="0" max="80" value="24">
+      </div>
+
+      <div class="field">
+        <label>Rotación <span class="val" id="rotationVal">0°</span></label>
+        <input type="range" id="rotation" min="-45" max="45" value="0">
+      </div>
+    </div>
+
+    <div class="panel">
+      <p class="panel-title"><span class="num">5</span>FILTRO DE PELÍCULA</p>
+
+      <div class="field">
+        <label>Preset</label>
+        <select id="filmPreset">
+          <option value="none" selected>Sin filtro</option>
+          <option value="kodak_gold_200">Kodak Gold 200</option>
+          <option value="fuji_superia_200">Fuji Superia 200</option>
+          <option value="kodak_elite_chrome">Kodak Elite Chrome</option>
+          <option value="polaroid_600">Polaroid 600</option>
+          <option value="agfacolor_40s">Agfacolor 40s</option>
+          <option value="agfacolor_xp_160">Agfacolor XP 160 vibrant</option>
+          <option value="technicolor_2">Technicolor 2</option>
+          <option value="agfa_scala_200">Agfa Scala 200 (B&N)</option>
+        </select>
+        <p class="hint">Reconstrucción aproximada del carácter de cada película a partir de sus perfiles de referencia — no es una LUT exacta del preset original de Lightroom.</p>
+      </div>
+
+      <div class="field" id="filmIntensityField" style="display:none;">
+        <label>Intensidad del filtro <span class="val" id="filmIntensityVal">75%</span></label>
+        <input type="range" id="filmIntensity" min="0" max="100" value="75">
+      </div>
+
+      <div class="field">
+        <label class="toggle-line" id="toggleGrain">
+          <span>Añadir grano / ruido</span>
+          <span class="switch"></span>
+        </label>
+      </div>
+
+      <div id="grainFields" style="display:none;">
+        <div class="field">
+          <label>Cantidad de grano <span class="val" id="grainAmountVal">35%</span></label>
+          <input type="range" id="grainAmount" min="0" max="100" value="35">
+        </div>
+        <div class="field">
+          <label>Tamaño de grano</label>
+          <div class="chip-group" id="grainSizeGroup">
+            <span class="chip active" data-size="fine">fino</span>
+            <span class="chip" data-size="medium">medio</span>
+            <span class="chip" data-size="coarse">grueso</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <p class="panel-title"><span class="num">6</span>SALIDA</p>
+
+      <div class="field">
+        <label>Formato de exportación</label>
+        <select id="exportFormat">
+          <option value="image/jpeg" selected>JPG</option>
+          <option value="image/png">PNG</option>
+        </select>
+      </div>
+
+      <div class="field" id="qualityField">
+        <label>Calidad JPG <span class="val" id="qualityVal">100%</span></label>
+        <input type="range" id="quality" min="40" max="100" value="100">
+      </div>
+
+      <div class="field">
+        <label>Prefijo de archivo</label>
+        <input type="text" id="filePrefix" value="marcada_">
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ================= ZONA DE TRABAJO ================= -->
+  <div class="workbench">
+
+    <div class="dropzone" id="dropzone">
+      <h2>Suelta tus fotografías aquí</h2>
+      <p>o haz clic para seleccionar &nbsp;·&nbsp; JPG, PNG, HEIC no soportado por el navegador</p>
+      <input type="file" id="fileInput" multiple accept="image/*">
+    </div>
+
+    <div class="toolbar">
+      <span class="count-tag"><strong id="fileCount">0</strong> fotografías cargadas</span>
+      <div style="display:flex; gap:10px;">
+        <button class="btn ghost" id="clearBtn" disabled>Vaciar todo</button>
+        <button class="btn accent" id="downloadBtn" disabled>Descargar todo (.zip)</button>
+      </div>
+    </div>
+
+    <div class="progress-line" id="progressLine" style="display:none;">
+      <div class="fill" id="progressFill"></div>
+    </div>
+
+    <div class="loupe">
+      <div class="loupe-head">
+        <p class="panel-title" style="margin:0;"><span class="num">•</span>VISTA PREVIA</p>
+        <span class="loupe-fname" id="loupeFname"></span>
+      </div>
+      <div class="loupe-stage" id="loupeStage">
+        <div class="loupe-empty" id="loupeEmpty">Sube fotografías para ver aquí el resultado en grande, en tiempo real.</div>
+        <canvas id="loupeCanvas" style="display:none;"></canvas>
+        <span class="loupe-badge" id="loupeBadge" style="display:none;">SIN EXIF</span>
+        <button class="loupe-nav prev" id="loupePrev" title="Anterior">‹</button>
+        <button class="loupe-nav next" id="loupeNext" title="Siguiente">›</button>
+      </div>
+      <div class="filmstrip" id="filmstrip"></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  Procesado 100% local en tu navegador · ningún archivo abandona tu dispositivo
+</footer>
+
+<script>
+(function(){
+  'use strict';
+
+  // ---------- Estado ----------
+  const state = {
+    items: [], // {id, file, img, exif, canvas}
+    activeId: null,
+  };
+  let idSeq = 0;
+
+  const settings = {
+    fields: { fecha:true, hora:true, camara:true, iso:true, apertura:true, velocidad:true, focal:true },
+    layout: 'vertical',
+    useCustomTpl: false,
+    customTpl: '{fecha} · {hora}',
+    extraText: '',
+    dateFormat: 'dd/mm/yyyy',
+    useFileDateFallback: true,
+    fontFamily: "'Courier New', monospace",
+    fontSize: 59,
+    fontWeight: '700',
+    fontColor: '#ffffff',
+    textOpacity: 81,
+    showBg: true,
+    bgColor: '#000000',
+    bgOpacity: 32,
+    bgRadius: 17,
+    textShadow: false,
+    position: 'cl',
+    margin: 24,
+    rotation: 0,
+    exportFormat: 'image/jpeg',
+    quality: 100,
+    filePrefix: 'marcada_',
+    filmPreset: 'none',
+    filmIntensity: 75,
+    grainEnabled: false,
+    grainAmount: 35,
+    grainSize: 'fine'
+  };
+
+  // Definición de presets de "película": ajustes aproximados de carácter,
+  // no LUTs exactas — ver nota en el panel de filtro.
+  const FILM_PRESETS = {
+    kodak_gold_200: {
+      brightness: 6, contrast: 8, saturation: 14,
+      shadowTint: [30, 14, -6], highlightTint: [14, 8, -10],
+      grayscale: false
+    },
+    fuji_superia_200: {
+      brightness: 2, contrast: 4, saturation: 4,
+      shadowTint: [-6, 4, 6], highlightTint: [-8, 6, 2],
+      grayscale: false
+    },
+    kodak_elite_chrome: {
+      brightness: 4, contrast: 16, saturation: 22,
+      shadowTint: [-4, -2, 6], highlightTint: [6, 2, -4],
+      grayscale: false
+    },
+    polaroid_600: {
+      brightness: 10, contrast: -14, saturation: -10,
+      shadowTint: [18, 8, 0], highlightTint: [10, 4, -12],
+      grayscale: false, fade: 18
+    },
+    agfacolor_40s: {
+      brightness: 4, contrast: -6, saturation: -8,
+      shadowTint: [22, 10, -12], highlightTint: [16, 10, -14],
+      grayscale: false, fade: 12
+    },
+    agfacolor_xp_160: {
+      brightness: 3, contrast: 10, saturation: 26,
+      shadowTint: [10, -2, -6], highlightTint: [8, 4, -6],
+      grayscale: false
+    },
+    technicolor_2: {
+      brightness: 2, contrast: 20, saturation: 34,
+      shadowTint: [-8, -6, 10], highlightTint: [10, -4, -10],
+      grayscale: false
+    },
+    agfa_scala_200: {
+      brightness: 6, contrast: 18, saturation: -100,
+      shadowTint: [0, 0, 0], highlightTint: [0, 0, 0],
+      grayscale: true
+    }
+  };
+
+  // ---------- Utilidades DOM ----------
+  const $ = (id) => document.getElementById(id);
+
+  function bindRange(id, valId, suffix, onChange){
+    const el = $(id);
+    let rafPending = false;
+    el.addEventListener('input', () => {
+      if(valId) $(valId).textContent = el.value + suffix;
+      onChange(el.value);
+      if(!rafPending){
+        rafPending = true;
+        requestAnimationFrame(() => {
+          rafPending = false;
+          renderActiveNow();
+          scheduleBackgroundRender();
+        });
+      }
+    });
+    el.addEventListener('change', () => {
+      // Al soltar el slider, asegurar que TODAS las fotos queden actualizadas
+      renderActiveNow();
+      scheduleBackgroundRender();
+    });
+  }
+
+  bindRange('fontSize','fontSizeVal','px', v => settings.fontSize = parseInt(v));
+  bindRange('textOpacity','textOpacityVal','%', v => settings.textOpacity = parseInt(v));
+  bindRange('bgOpacity','bgOpacityVal','%', v => settings.bgOpacity = parseInt(v));
+  bindRange('bgRadius','bgRadiusVal','px', v => settings.bgRadius = parseInt(v));
+  bindRange('margin','marginVal','px', v => settings.margin = parseInt(v));
+  bindRange('rotation','rotationVal','°', v => settings.rotation = parseInt(v));
+  bindRange('quality','qualityVal','%', v => settings.quality = parseInt(v));
+
+  $('fontFamily').addEventListener('change', e => { settings.fontFamily = e.target.value; renderActiveNow(); scheduleBackgroundRender(); });
+  $('fontWeight').addEventListener('change', e => { settings.fontWeight = e.target.value; renderActiveNow(); scheduleBackgroundRender(); });
+  $('dateFormat').addEventListener('change', e => { settings.dateFormat = e.target.value; renderActiveNow(); scheduleBackgroundRender(); });
+  $('exportFormat').addEventListener('change', e => {
+    settings.exportFormat = e.target.value;
+    $('qualityField').style.display = (e.target.value === 'image/jpeg') ? '' : 'none';
+  });
+  $('filePrefix').addEventListener('input', e => settings.filePrefix = e.target.value);
+  $('extraText').addEventListener('input', e => { settings.extraText = e.target.value; renderActiveNow(); scheduleBackgroundRender(); });
+
+  const fieldCheckboxes = {
+    fecha: 'fldFecha', hora: 'fldHora', camara: 'fldCamara',
+    iso: 'fldIso', apertura: 'fldApertura', velocidad: 'fldVelocidad', focal: 'fldFocal'
+  };
+  Object.entries(fieldCheckboxes).forEach(([key, id]) => {
+    $(id).addEventListener('change', e => {
+      settings.fields[key] = e.target.checked;
+      renderActiveNow(); scheduleBackgroundRender();
+    });
+  });
+
+  document.querySelectorAll('#layoutGroup .chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#layoutGroup .chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      settings.layout = chip.dataset.layout;
+      renderActiveNow(); scheduleBackgroundRender();
+    });
+  });
+
+  makeToggle('toggleCustomTpl', 'useCustomTpl', false, on => {
+    $('customTplField').style.display = on ? '' : 'none';
+  });
+  $('customTpl').addEventListener('input', e => { settings.customTpl = e.target.value; renderActiveNow(); scheduleBackgroundRender(); });
+
+  $('fontColor').addEventListener('input', e => {
+    settings.fontColor = e.target.value;
+    $('fontColorHex').textContent = e.target.value.toUpperCase();
+    renderActiveNow(); scheduleBackgroundRender();
+  });
+  $('bgColor').addEventListener('input', e => {
+    settings.bgColor = e.target.value;
+    $('bgColorHex').textContent = e.target.value.toUpperCase();
+    renderActiveNow(); scheduleBackgroundRender();
+  });
+
+  document.querySelectorAll('.chip[data-color]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      settings.fontColor = chip.dataset.color;
+      $('fontColor').value = chip.dataset.color;
+      $('fontColorHex').textContent = chip.dataset.color.toUpperCase();
+      renderActiveNow(); scheduleBackgroundRender();
+    });
+  });
+
+  function makeToggle(toggleId, key, defaultOn, extra){
+    const line = $(toggleId);
+    const sw = line.querySelector('.switch');
+    let on = defaultOn;
+    line.addEventListener('click', () => {
+      on = !on;
+      sw.classList.toggle('on', on);
+      settings[key] = on;
+      if(extra) extra(on);
+      renderActiveNow(); scheduleBackgroundRender();
+    });
+  }
+  makeToggle('toggleNoExif','useFileDateFallback', true);
+  makeToggle('toggleBg','showBg', true, on => { $('bgFields').style.opacity = on ? '1' : '0.35'; $('bgFields').style.pointerEvents = on ? 'auto' : 'none'; });
+  makeToggle('toggleShadow','textShadow', false);
+
+  // ---------- Filtro de película y grano ----------
+  $('filmPreset').addEventListener('change', e => {
+    settings.filmPreset = e.target.value;
+    $('filmIntensityField').style.display = (e.target.value === 'none') ? 'none' : '';
+    renderActiveNow(); scheduleBackgroundRender();
+  });
+  bindRange('filmIntensity','filmIntensityVal','%', v => settings.filmIntensity = parseInt(v));
+
+  makeToggle('toggleGrain','grainEnabled', false, on => {
+    $('grainFields').style.display = on ? '' : 'none';
+  });
+  bindRange('grainAmount','grainAmountVal','%', v => settings.grainAmount = parseInt(v));
+
+  document.querySelectorAll('#grainSizeGroup .chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('#grainSizeGroup .chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      settings.grainSize = chip.dataset.size;
+      renderActiveNow(); scheduleBackgroundRender();
+    });
+  });
+
+
+  document.querySelectorAll('.pos-cell').forEach(cell => {
+    cell.addEventListener('click', () => {
+      document.querySelectorAll('.pos-cell').forEach(c => c.classList.remove('active'));
+      cell.classList.add('active');
+      settings.position = cell.dataset.pos;
+      renderActiveNow(); scheduleBackgroundRender();
+    });
+  });
+
+  // ---------- Carga de archivos ----------
+  const dropzone = $('dropzone');
+  const fileInput = $('fileInput');
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('drag');
+    handleFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+  function handleFiles(fileList){
+    const files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+    files.forEach(file => {
+      const id = 'f' + (idSeq++);
+      const item = { id, file, img: null, exif: {}, canvas: null, lastModified: file.lastModified };
+      state.items.push(item);
+      loadImage(item);
+    });
+  }
+
+  function loadImage(item){
+    const objectUrl = URL.createObjectURL(item.file);
+    const img = new Image();
+    img.onload = () => {
+      item.img = img;
+      // Leer EXIF
+      try {
+        EXIF.getData(item.file, function(){
+          const exifDate = EXIF.getTag(this, 'DateTimeOriginal') || EXIF.getTag(this, 'DateTime');
+          item.exif = {
+            dateStr: exifDate || null,
+            make: EXIF.getTag(this, 'Make') || '',
+            model: EXIF.getTag(this, 'Model') || '',
+            iso: EXIF.getTag(this, 'ISOSpeedRatings') || '',
+            fnumber: EXIF.getTag(this, 'FNumber') || '',
+            exposure: EXIF.getTag(this, 'ExposureTime') || '',
+            focal: EXIF.getTag(this, 'FocalLength') || ''
+          };
+          buildCard(item);
+          renderOne(item);
+          URL.revokeObjectURL(objectUrl);
+        });
+      } catch(err){
+        buildCard(item);
+        renderOne(item);
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+    img.src = objectUrl;
+  }
+
+  // ---------- Filmstrip (miniaturas) y visor grande ----------
+  const filmstrip = $('filmstrip');
+  const thumbEls = {};
+
+  const loupeStage = $('loupeStage');
+  const loupeCanvas = $('loupeCanvas');
+  const loupeEmpty = $('loupeEmpty');
+  const loupeFname = $('loupeFname');
+  const loupeBadge = $('loupeBadge');
+  const loupePrev = $('loupePrev');
+  const loupeNext = $('loupeNext');
+
+  function buildCard(item){
+    // Miniatura en el carrete
+    const thumb = document.createElement('div');
+    thumb.className = 'thumb';
+    thumb.id = 'thumb_' + item.id;
+    thumb.innerHTML = `
+      <canvas></canvas>
+      <button class="thumb-remove" title="Quitar">×</button>
+    `;
+    thumb.querySelector('canvas').addEventListener('click', () => setActive(item.id));
+    thumb.addEventListener('click', (e) => {
+      if(e.target.closest('.thumb-remove')) return;
+      setActive(item.id);
+    });
+    thumb.querySelector('.thumb-remove').addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeItem(item.id);
+    });
+    filmstrip.appendChild(thumb);
+    thumbEls[item.id] = thumb;
+    item.thumbCanvas = thumb.querySelector('canvas');
+    // Miniatura fija a baja resolución: actualizarla es barato aunque la foto original sea enorme
+    item.thumbCanvas.width = 128;
+    item.thumbCanvas.height = 96;
+
+    // El canvas "maestro" de trabajo (usado para previsualización, visor grande y exportación)
+    item.canvas = document.createElement('canvas');
+
+    updateCounters();
+    if(state.activeId === null) setActive(item.id);
+  }
+
+  function removeItem(id){
+    state.items = state.items.filter(i => i.id !== id);
+    const el = thumbEls[id];
+    if(el) el.remove();
+    delete thumbEls[id];
+
+    if(state.activeId === id){
+      state.activeId = state.items.length ? state.items[0].id : null;
+    }
+    updateCounters();
+    renderLoupe();
+  }
+
+  $('clearBtn').addEventListener('click', () => {
+    state.items = [];
+    state.activeId = null;
+    filmstrip.innerHTML = '';
+    Object.keys(thumbEls).forEach(k => delete thumbEls[k]);
+    updateCounters();
+    renderLoupe();
+  });
+
+  function updateCounters(){
+    $('fileCount').textContent = state.items.length;
+    const has = state.items.length > 0;
+    $('clearBtn').disabled = !has;
+    $('downloadBtn').disabled = !has;
+  }
+
+  function setActive(id){
+    state.activeId = id;
+    Object.entries(thumbEls).forEach(([itemId, el]) => {
+      el.classList.toggle('active', itemId === id);
+    });
+    const el = thumbEls[id];
+    if(el) el.scrollIntoView({ behavior:'smooth', inline:'center', block:'nearest' });
+    renderLoupe();
+  }
+
+  function getActiveIndex(){
+    return state.items.findIndex(i => i.id === state.activeId);
+  }
+
+  loupePrev.addEventListener('click', () => {
+    const idx = getActiveIndex();
+    if(idx > 0) setActive(state.items[idx-1].id);
+  });
+  loupeNext.addEventListener('click', () => {
+    const idx = getActiveIndex();
+    if(idx >= 0 && idx < state.items.length - 1) setActive(state.items[idx+1].id);
+  });
+
+  function renderLoupe(){
+    const idx = getActiveIndex();
+    const item = idx >= 0 ? state.items[idx] : null;
+
+    loupePrev.disabled = !item || idx <= 0;
+    loupeNext.disabled = !item || idx >= state.items.length - 1;
+
+    if(!item || !item.img){
+      loupeCanvas.style.display = 'none';
+      loupeEmpty.style.display = '';
+      loupeBadge.style.display = 'none';
+      loupeFname.textContent = '';
+      return;
+    }
+
+    loupeEmpty.style.display = 'none';
+    loupeCanvas.style.display = '';
+    loupeFname.textContent = `${item.file.name}  ·  ${idx+1}/${state.items.length}`;
+
+    // Copiar el canvas maestro (ya renderizado con la marca de agua) al visor grande
+    loupeCanvas.width = item.canvas.width;
+    loupeCanvas.height = item.canvas.height;
+    const ctx = loupeCanvas.getContext('2d');
+    ctx.drawImage(item.canvas, 0, 0);
+
+    loupeBadge.style.display = item.hasExif ? 'none' : '';
+  }
+
+  // ---------- Formato de fecha ----------
+  function pad(n){ return n.toString().padStart(2,'0'); }
+  const MONTHS_ES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+
+  function parseExifDate(str){
+    // formato EXIF: "YYYY:MM:DD HH:MM:SS"
+    if(!str) return null;
+    const m = str.match(/(\d{4}):(\d{2}):(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+    if(!m) return null;
+    return new Date(parseInt(m[1]), parseInt(m[2])-1, parseInt(m[3]), parseInt(m[4]), parseInt(m[5]), parseInt(m[6]));
+  }
+
+  function formatDate(d){
+    const dd = pad(d.getDate()), mm = pad(d.getMonth()+1), yyyy = d.getFullYear();
+    switch(settings.dateFormat){
+      case 'yyyy-mm-dd': return `${yyyy}-${mm}-${dd}`;
+      case 'dd MMM yyyy': return `${d.getDate()} ${MONTHS_ES[d.getMonth()]} ${yyyy}`;
+      case 'mm/dd/yyyy': return `${mm}/${dd}/${yyyy}`;
+      default: return `${dd}/${mm}/${yyyy}`;
+    }
+  }
+  function formatTime(d){
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function buildStampText(item, index){
+    let date = parseExifDate(item.exif.dateStr);
+    let usedFallback = false;
+    if(!date){
+      if(settings.useFileDateFallback){
+        date = new Date(item.lastModified);
+        usedFallback = true;
+      } else {
+        date = null;
+      }
+    }
+
+    const fecha = date ? formatDate(date) : '—';
+    const hora = date ? formatTime(date) : '—';
+    const fechahora = date ? `${fecha} ${hora}` : '—';
+    const rawMake = (item.exif.make || '').trim();
+    const rawModel = (item.exif.model || '').trim();
+    let camara;
+    if(rawMake && rawModel){
+      // Evitar duplicar el fabricante si el modelo ya lo incluye (p. ej. "Canon EOS 800D")
+      camara = rawModel.toLowerCase().startsWith(rawMake.toLowerCase()) ? rawModel : `${rawMake} ${rawModel}`;
+    } else {
+      camara = rawMake || rawModel || '—';
+    }
+    const modelo = item.exif.model || '—';
+    const iso = item.exif.iso ? `ISO${item.exif.iso}` : '';
+    const apertura = item.exif.fnumber ? `f/${item.exif.fnumber}` : '';
+    let velocidad = '';
+    if(item.exif.exposure){
+      velocidad = item.exif.exposure < 1 ? `1/${Math.round(1/item.exif.exposure)}s` : `${item.exif.exposure}s`;
+    }
+    const focal = item.exif.focal ? `${item.exif.focal}mm` : '';
+    const texto = settings.extraText || '';
+    const contador = (index + 1).toString().padStart(3,'0');
+
+    let result;
+
+    if(settings.useCustomTpl){
+      const template = settings.customTpl || '{fecha}';
+      result = template
+        .replaceAll('{fecha}', fecha)
+        .replaceAll('{hora}', hora)
+        .replaceAll('{fechahora}', fechahora)
+        .replaceAll('{camara}', camara)
+        .replaceAll('{modelo}', modelo)
+        .replaceAll('{iso}', iso)
+        .replaceAll('{apertura}', apertura)
+        .replaceAll('{velocidad}', velocidad)
+        .replaceAll('{focal}', focal)
+        .replaceAll('{texto}', texto)
+        .replaceAll('{contador}', contador);
+      if(settings.extraText){
+        result += (settings.layout === 'vertical' ? '\n' : '  ') + settings.extraText;
+      }
+    } else {
+      const parts = [];
+      if(settings.fields.fecha && date) parts.push(fecha);
+      if(settings.fields.hora && date) parts.push(hora);
+      if(settings.fields.camara && camara !== '—') parts.push(camara);
+      if(settings.fields.iso && iso) parts.push(iso);
+      if(settings.fields.apertura && apertura) parts.push(apertura);
+      if(settings.fields.velocidad && velocidad) parts.push(velocidad);
+      if(settings.fields.focal && focal) parts.push(focal);
+      if(texto) parts.push(texto);
+
+      if(parts.length === 0){
+        result = date ? fechahora : '—';
+      } else {
+        result = settings.layout === 'vertical' ? parts.join('\n') : parts.join('  ·  ');
+      }
+    }
+
+    result = settings.layout === 'vertical'
+      ? result.split('\n').map(l => l.replace(/\s{2,}/g,' ').trim()).join('\n')
+      : result.replace(/\s{2,}/g,'  ').trim();
+
+    return { text: result, hasExif: !usedFallback && !!item.exif.dateStr };
+  }
+
+  function hexToRgba(hex, alphaPct){
+    const h = hex.replace('#','');
+    const r = parseInt(h.substring(0,2),16);
+    const g = parseInt(h.substring(2,4),16);
+    const b = parseInt(h.substring(4,6),16);
+    return `rgba(${r},${g},${b},${alphaPct/100})`;
+  }
+
+  // ---------- Dibujo en canvas ----------
+  // ---------- Filtro de película (aproximación por píxel) y grano ----------
+  function clamp255(v){ return v < 0 ? 0 : (v > 255 ? 255 : v); }
+
+  function applyFilmAndGrain(ctx, w, h){
+    const needsFilm = settings.filmPreset !== 'none' && settings.filmIntensity > 0;
+    const needsGrain = settings.grainEnabled && settings.grainAmount > 0;
+    if(!needsFilm && !needsGrain) return;
+
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const data = imageData.data;
+
+    if(needsFilm){
+      applyFilmPreset(data, FILM_PRESETS[settings.filmPreset], settings.filmIntensity / 100);
+    }
+    if(needsGrain){
+      applyGrain(data, w, h, settings.grainAmount / 100, settings.grainSize);
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  function applyFilmPreset(data, preset, amount){
+    if(!preset || amount <= 0) return;
+    const { brightness, contrast, saturation, shadowTint, highlightTint, grayscale, fade } = preset;
+    const contrastFactor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+    const satFactor = 1 + (saturation / 100);
+    const fadeAmount = fade || 0;
+
+    for(let i = 0; i < data.length; i += 4){
+      let r = data[i], g = data[i+1], b = data[i+2];
+
+      // Brillo y contraste
+      r = contrastFactor * (r - 128) + 128 + brightness;
+      g = contrastFactor * (g - 128) + 128 + brightness;
+      b = contrastFactor * (b - 128) + 128 + brightness;
+
+      // Saturación (mezcla con gris de luminancia)
+      const gray = 0.299*r + 0.587*g + 0.114*b;
+      r = gray + (r - gray) * satFactor;
+      g = gray + (g - gray) * satFactor;
+      b = gray + (b - gray) * satFactor;
+
+      if(grayscale){
+        r = g = b = gray;
+      }
+
+      // Tinte por tono: sombras reciben shadowTint, luces reciben highlightTint
+      const lum = (r + g + b) / 3 / 255;
+      const shadowWeight = 1 - lum;
+      const highlightWeight = lum;
+      r += shadowTint[0] * shadowWeight * 0.5 + highlightTint[0] * highlightWeight * 0.5;
+      g += shadowTint[1] * shadowWeight * 0.5 + highlightTint[1] * highlightWeight * 0.5;
+      b += shadowTint[2] * shadowWeight * 0.5 + highlightTint[2] * highlightWeight * 0.5;
+
+      // Fade / desvanecido: levanta los negros, comprime el rango (look de carrete antiguo)
+      if(fadeAmount > 0){
+        r = r * (1 - fadeAmount/100) + (255 * 0.12) * (fadeAmount/100);
+        g = g * (1 - fadeAmount/100) + (255 * 0.12) * (fadeAmount/100);
+        b = b * (1 - fadeAmount/100) + (255 * 0.12) * (fadeAmount/100);
+      }
+
+      r = clamp255(r); g = clamp255(g); b = clamp255(b);
+
+      // Mezcla con la imagen original según la intensidad del slider
+      data[i]   = data[i]   * (1 - amount) + r * amount;
+      data[i+1] = data[i+1] * (1 - amount) + g * amount;
+      data[i+2] = data[i+2] * (1 - amount) + b * amount;
+    }
+  }
+
+  function applyGrain(data, w, h, amount, size){
+    // "size" controla el tamaño de bloque del grano: fino=1px, medio=2px, grueso=3px
+    const block = size === 'coarse' ? 3 : (size === 'medium' ? 2 : 1);
+    const strength = amount * 45; // desviación máxima de ruido en niveles de 0-255
+
+    if(block === 1){
+      for(let i = 0; i < data.length; i += 4){
+        const n = (Math.random() - 0.5) * 2 * strength;
+        data[i]   = clamp255(data[i]   + n);
+        data[i+1] = clamp255(data[i+1] + n);
+        data[i+2] = clamp255(data[i+2] + n);
+      }
+      return;
+    }
+
+    // Para grano medio/grueso, generar ruido por bloques para simular un grano más grande
+    for(let by = 0; by < h; by += block){
+      for(let bx = 0; bx < w; bx += block){
+        const n = (Math.random() - 0.5) * 2 * strength;
+        for(let y = by; y < Math.min(by + block, h); y++){
+          for(let x = bx; x < Math.min(bx + block, w); x++){
+            const idx = (y * w + x) * 4;
+            data[idx]   = clamp255(data[idx]   + n);
+            data[idx+1] = clamp255(data[idx+1] + n);
+            data[idx+2] = clamp255(data[idx+2] + n);
+          }
+        }
+      }
+    }
+  }
+
+  const PREVIEW_MAX_SIZE = 1600; // resolución máxima de lado mayor durante la edición en vivo
+
+  function drawWatermark(canvas, img, stamp, maxSize){
+    const naturalW = img.naturalWidth, naturalH = img.naturalHeight;
+    let w = naturalW, h = naturalH;
+
+    if(maxSize && Math.max(w, h) > maxSize){
+      const scale = maxSize / Math.max(w, h);
+      w = Math.round(w * scale);
+      h = Math.round(h * scale);
+    }
+
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+
+    applyFilmAndGrain(ctx, w, h);
+
+    const fontSize = settings.fontSize;
+    ctx.font = `${settings.fontWeight} ${fontSize}px ${settings.fontFamily}`;
+    ctx.textBaseline = 'alphabetic';
+
+    const lines = stamp.text.split('\n');
+    const lineHeight = fontSize * 1.25;
+    const paddingX = fontSize * 0.5;
+    const paddingY = fontSize * 0.35;
+
+    let maxLineWidth = 0;
+    lines.forEach(line => {
+      const width = ctx.measureText(line).width;
+      if(width > maxLineWidth) maxLineWidth = width;
+    });
+
+    const boxW = maxLineWidth + paddingX*2;
+    const boxH = (lineHeight * lines.length) + paddingY*2 - (lineHeight - fontSize);
+    const margin = settings.margin;
+
+    let x, y;
+    const pos = settings.position;
+    if(pos.includes('l')) { x = margin; }
+    else if(pos.includes('c') && !pos.includes('cl') && !pos.includes('cr')) { x = (w - boxW)/2; }
+    else if(pos === 'cl') { x = margin; }
+    else if(pos === 'cr') { x = w - boxW - margin; }
+    else if(pos.includes('r')) { x = w - boxW - margin; }
+    else { x = (w - boxW)/2; }
+
+    if(pos.includes('t')) { y = margin; }
+    else if(pos.includes('b')) { y = h - boxH - margin; }
+    else { y = (h - boxH)/2; }
+
+    ctx.save();
+    // Rotación alrededor del centro del sello
+    const cx = x + boxW/2, cy = y + boxH/2;
+    ctx.translate(cx, cy);
+    ctx.rotate(settings.rotation * Math.PI/180);
+    ctx.translate(-cx, -cy);
+
+    if(settings.showBg){
+      ctx.fillStyle = hexToRgba(settings.bgColor, settings.bgOpacity);
+      roundRect(ctx, x, y, boxW, boxH, settings.bgRadius);
+      ctx.fill();
+    }
+
+    if(settings.textShadow){
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur = fontSize * 0.15;
+      ctx.shadowOffsetX = 1;
+      ctx.shadowOffsetY = 1;
+    }
+
+    ctx.fillStyle = hexToRgba(settings.fontColor, settings.textOpacity);
+    ctx.textBaseline = 'middle';
+    lines.forEach((line, i) => {
+      const lineY = y + paddingY + fontSize/2 + (i * lineHeight);
+      ctx.fillText(line, x + paddingX, lineY + fontSize*0.04);
+    });
+
+    ctx.restore();
+  }
+
+  function roundRect(ctx, x, y, w, h, r){
+    r = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.arcTo(x+w, y, x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x, y+h, r);
+    ctx.arcTo(x, y+h, x, y, r);
+    ctx.arcTo(x, y, x+w, y, r);
+    ctx.closePath();
+  }
+
+  // ---------- Render inteligente: activo al instante, resto en segundo plano ----------
+  let backgroundRenderHandle = null;
+
+  function renderActiveNow(){
+    const idx = getActiveIndex();
+    if(idx < 0) return;
+    const item = state.items[idx];
+    if(item && item.img) renderOne(item);
+  }
+
+  function scheduleBackgroundRender(){
+    // Marca todas las fotos (salvo la activa) como pendientes de recalcular
+    state.items.forEach(item => {
+      if(item.id !== state.activeId) item.dirty = true;
+    });
+    if(backgroundRenderHandle) return; // ya hay un ciclo de fondo corriendo
+    backgroundRenderHandle = requestAnimationFrame(processBackgroundQueue);
+  }
+
+  function processBackgroundQueue(){
+    // Procesa una foto pendiente por frame para no bloquear la interacción
+    const next = state.items.find(item => item.dirty && item.img);
+    if(!next){
+      backgroundRenderHandle = null;
+      return;
+    }
+    next.dirty = false;
+    renderOne(next);
+    backgroundRenderHandle = requestAnimationFrame(processBackgroundQueue);
+  }
+
+  function renderOne(item){
+    if(!item.img || !item.canvas) return;
+    const index = state.items.indexOf(item);
+    const stamp = buildStampText(item, index);
+    drawWatermark(item.canvas, item.img, stamp, PREVIEW_MAX_SIZE);
+    item.hasExif = stamp.hasExif;
+
+    // Actualizar miniatura del carrete (a baja resolución, es barato)
+    if(item.thumbCanvas){
+      const tw = item.thumbCanvas.width || 128;
+      const th = item.thumbCanvas.height || 128;
+      const tctx = item.thumbCanvas.getContext('2d');
+      tctx.clearRect(0, 0, tw, th);
+      tctx.drawImage(item.canvas, 0, 0, tw, th);
+    }
+
+    // Si esta foto es la que se está viendo en grande, refrescar el visor
+    if(item.id === state.activeId){
+      renderLoupe();
+    }
+  }
+
+  function renderAll(){
+    // Recalcula todo inmediatamente (usado solo en operaciones puntuales,
+    // no en arrastres de slider) — p. ej. al terminar de cargar imágenes.
+    state.items.forEach(item => { item.dirty = false; if(item.img) renderOne(item); });
+  }
+
+  // ---------- Descarga en ZIP ----------
+  $('downloadBtn').addEventListener('click', async () => {
+    if(state.items.length === 0) return;
+    const btn = $('downloadBtn');
+    btn.disabled = true;
+    const progressLine = $('progressLine');
+    const progressFill = $('progressFill');
+    progressLine.style.display = '';
+    progressFill.style.width = '0%';
+
+    const zip = new JSZip();
+    const ext = settings.exportFormat === 'image/png' ? 'png' : 'jpg';
+    const total = state.items.length;
+    const exportCanvas = document.createElement('canvas');
+
+    for(let i = 0; i < total; i++){
+      const item = state.items[i];
+      if(item.img){
+        // Renderizar a resolución completa solo en el momento de exportar
+        const stamp = buildStampText(item, i);
+        drawWatermark(exportCanvas, item.img, stamp, null);
+        const blob = await new Promise(resolve => {
+          exportCanvas.toBlob(resolve, settings.exportFormat, settings.quality/100);
+        });
+        const baseName = item.file.name.replace(/\.[^.]+$/, '');
+        zip.file(`${settings.filePrefix}${baseName}.${ext}`, blob);
+      }
+      progressFill.style.width = Math.round(((i+1)/total)*100) + '%';
+      // Ceder el hilo un instante entre fotos para que la barra de progreso se pinte
+      await new Promise(r => setTimeout(r, 0));
+    }
+
+    const content = await zip.generateAsync({ type: 'blob' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(content);
+    a.download = 'fotografias_con_marca_de_agua.zip';
+    a.click();
+
+    setTimeout(() => { progressLine.style.display = 'none'; }, 600);
+    btn.disabled = false;
+  });
+
+})();
+</script>
+</body>
+</html>
